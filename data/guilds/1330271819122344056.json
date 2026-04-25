@@ -1,0 +1,18 @@
+{
+  "prefix": "!",
+  "welcome_channel": null,
+  "farewell_channel": null,
+  "ai_channel": null,
+  "log_channel": null,
+  "mute_role": null,
+  "auto_role": null,
+  "ticket_category": null,
+  "bad_words": [],
+  "anti_spam": true,
+  "link_filter": false,
+  "reaction_roles": {},
+  "level_up_channel": null,
+  "giveaways": {},
+  "blacklisted_users": [],
+  "disabled_commands": []
+}

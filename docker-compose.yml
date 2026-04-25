@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  discord-bot:
+    build: .
+    container_name: advanced-discord-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist SQLite database and guild configs between restarts
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
