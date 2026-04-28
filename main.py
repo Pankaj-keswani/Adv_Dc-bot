@@ -269,22 +269,35 @@ async def main():
     
     for attempt in range(1, max_retries + 1):
         try:
+            # 1. DNS Check
+            import socket
+            try:
+                ip = socket.gethostbyname("discord.com")
+                log.info(f"🌐 DNS Check: discord.com resolved to {ip}")
+            except Exception as de:
+                log.warning(f"⚠️ DNS Warning: Could not resolve discord.com: {de}")
+
             log.info(f"🚀 Starting bot (Attempt {attempt}/{max_retries})...")
+            
             async with bot:
-                # Force IPv4 to avoid common Hugging Face connection errors
+                # 2. Optimized Connector
                 import aiohttp
-                import socket
-                connector = aiohttp.TCPConnector(family=socket.AF_INET)
+                connector = aiohttp.TCPConnector(
+                    family=socket.AF_INET,
+                    ssl=False, # Some cloud envs have proxy issues with default SSL
+                    use_dns_cache=False
+                )
                 bot.http.connector = connector
                 
+                # Use a longer timeout for the initial handshake
                 await bot.start(DISCORD_TOKEN)
-                break # Success!
+                break 
         except Exception as e:
             log.error(f"❌ Connection failed: {e}")
             if attempt < max_retries:
                 log.info(f"⏳ Retrying in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
-                retry_delay *= 2 # Exponential backoff
+                retry_delay *= 2
             else:
                 log.critical("💀 All connection attempts failed. Shutting down.")
                 sys.exit(1)
