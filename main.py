@@ -263,54 +263,28 @@ async def main():
 
     bot = AdvancedBot()
     
-    # ── Connection Retry Logic ───────────────────────────────────────────────
-    max_retries = 5
-    retry_delay = 5
+    # ── Connection Loop ─────────────────────────────────────────────────────
+    max_retries = 10
     
     for attempt in range(1, max_retries + 1):
         try:
-            # 1. Token Check
-            if not DISCORD_TOKEN or len(DISCORD_TOKEN) < 10:
-                log.critical("❌ DISCORD_TOKEN is empty or too short! Check HF Secrets.")
-                return
-            log.info(f"🔑 Token detected (Starts with: {DISCORD_TOKEN[:4]}...)")
-
-            # 2. DNS Check
-            import socket
-            try:
-                ip = socket.gethostbyname("discord.com")
-                log.info(f"🌐 DNS Check: discord.com -> {ip}")
-            except Exception as de:
-                log.warning(f"⚠️ DNS Warning: {de}")
-
-            log.info(f"🚀 Starting bot (Attempt {attempt}/{max_retries})...")
+            log.info(f"🚀 [Attempt {attempt}] Connecting to Discord Gateway...")
             
             async with bot:
-                # 3. Secure but cloud-friendly connector
-                import aiohttp
-                import ssl
-                import certifi
-                
-                ssl_context = ssl.create_default_context(cafile=certifi.where())
-                connector = aiohttp.TCPConnector(
-                    family=socket.AF_INET,
-                    ssl=ssl_context,
-                    use_dns_cache=False
-                )
-                bot.http.connector = connector
-                
+                # Let discord.py handle the connector naturally
+                # but keep the health server running in the background
                 await bot.start(DISCORD_TOKEN)
                 break 
         except Exception as e:
-            log.error(f"❌ Connection error: {e}")
-            if attempt < max_retries:
-                log.info(f"⏳ Waiting {retry_delay}s before retry...")
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2
-            else:
-                log.critical("💀 All attempts failed.")
-                sys.exit(1)
-
+            log.error(f"❌ Gateway Error: {e}")
+            wait = min(attempt * 5, 60)
+            log.info(f"⏳ Waiting {wait}s before reconnecting...")
+            await asyncio.sleep(wait)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"FATAL CRASH: {e}")
