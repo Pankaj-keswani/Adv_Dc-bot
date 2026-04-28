@@ -228,6 +228,18 @@ class Owner(commands.Cog):
         await self.bot.change_presence(activity=discord.Activity(type=atype, name=text))
         await ctx.send(f"✅ Status set to `{activity_type} {text}`", delete_after=5)
 
+    @commands.command(name="testwelcome", hidden=True)
+    @is_owner()
+    async def testwelcome(self, ctx: commands.Context):
+        """Test the custom welcome image generation."""
+        from handlers.event_handler import EventHandler
+        # Trigger the event manually for the author
+        cog = self.bot.get_cog("EventHandler")
+        if cog:
+            await cog.on_member_join(ctx.author)
+            await ctx.send("✅ Triggered welcome event for you!")
+        else:
+            await ctx.send("❌ EventHandler cog not found.")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Owner(bot))

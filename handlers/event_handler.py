@@ -6,7 +6,9 @@ import discord
 from discord.ext import commands
 from config.settings import COLOR_SUCCESS, COLOR_ERROR, COLOR_INFO
 from handlers.json_handler import get_guild_config
+from handlers.image_gen import generate_welcome_image
 import logging
+import io
 
 log = logging.getLogger("bot")
 
@@ -36,18 +38,30 @@ class EventHandler(commands.Cog):
         if ch_id:
             channel = guild.get_channel(int(ch_id))
             if channel:
-                embed = discord.Embed(
-                    title=f"👋 Welcome to {guild.name}!",
-                    description=(
-                        f"Hey {member.mention}, welcome aboard!\n"
-                        f"You are member **#{guild.member_count}**.\n"
-                        f"Read the rules and enjoy your stay! 🎉"
-                    ),
-                    color=COLOR_SUCCESS,
-                )
-                embed.set_thumbnail(url=member.display_avatar.url)
-                embed.set_footer(text=f"ID: {member.id}")
-                await channel.send(embed=embed)
+                # Generate custom image
+                try:
+                    img_data = await generate_welcome_image(member)
+                    file = discord.File(fp=img_data, filename=f"welcome_{member.id}.png")
+                    
+                    embed = discord.Embed(
+                        title=f"👋 Welcome to {guild.name}!",
+                        description=f"Hey {member.mention}, welcome aboard! You are our **{guild.member_count}th** member. 🎉",
+                        color=COLOR_SUCCESS,
+                    )
+                    embed.set_image(url=f"attachment://welcome_{member.id}.png")
+                    embed.set_footer(text=f"User ID: {member.id}")
+                    
+                    await channel.send(embed=embed, file=file)
+                except Exception as e:
+                    log.error(f"Failed to generate welcome image: {e}")
+                    # Fallback to simple embed if image generation fails
+                    embed = discord.Embed(
+                        title=f"👋 Welcome to {guild.name}!",
+                        description=f"Hey {member.mention}, welcome aboard! Read the rules and enjoy your stay! 🎉",
+                        color=COLOR_SUCCESS,
+                    )
+                    embed.set_thumbnail(url=member.display_avatar.url)
+                    await channel.send(embed=embed)
 
         log.info("Member joined: %s in %s", member, guild)
 
@@ -159,57 +173,111 @@ class EventHandler(commands.Cog):
         embed.add_field(name="After", value=after.content[:512] or "*empty*", inline=False)
         await channel.send(embed=embed)
 
-    # ── Reaction Roles ────────────────────────────────────────────────────────
+    # ── Smart DM Help Listener ────────────────────────────────────────────────
+    #
+    # When a user messages the bot in DMs (or types !commands in a server),
+    # the bot replies with the right help page automatically.
+    #
+    # Keyword categories understood naturally:
+    #   "music", "economy", "mod"/"moderation", "fun", "games", "info",
+    #   "perm"/"permission", "all"/"help"
+    #
+    # If the user's message matches a specific command name (e.g. "skip"),
+    # the bot shows detailed help for that command.
+
+    # Map of keywords → cog qualified names
+    CATEGORY_KEYWORDS = {
+        "music":       ["music", "song", "play", "audio", "queue", "volume", "skip", "np", "nowplaying"],
+        "economy":     ["economy", "coin", "coins", "balance", "money", "bank", "shop"],
+        "moderation":  ["mod", "moderation", "ban", "kick", "mute", "warn", "clear", "purge"],
+        "fun":         ["fun", "meme", "joke", "random"],
+        "games":       ["game", "games", "trivia", "guess"],
+        "info":        ["info", "server", "user", "avatar", "ping"],
+        "extras":      ["extra", "extras", "misc", "other"],
+        "permissions": ["perm", "perms", "permission", "permissions", "access", "restrict"],
+    }
 
     @commands.Cog.listener()
-    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
-        if payload.guild_id is None:
+    async def on_message(self, message: discord.Message):
+        # Ignore bots and messages that are commands (prefix-handled elsewhere)
+        if message.author.bot:
             return
-        cfg = get_guild_config(payload.guild_id)
-        rr = cfg.get("reaction_roles", {})
-        msg_key = str(payload.message_id)
-        if msg_key not in rr:
-            return
-        emoji_key = str(payload.emoji)
-        if emoji_key not in rr[msg_key]:
-            return
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-        role = guild.get_role(int(rr[msg_key][emoji_key]))
-        if not role:
-            return
-        member = guild.get_member(payload.user_id)
-        if member and not member.bot:
-            try:
-                await member.add_roles(role, reason="Reaction role")
-            except discord.Forbidden:
-                pass
 
-    @commands.Cog.listener()
-    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
-        if payload.guild_id is None:
+        # ── Only handle DMs or explicit !commands trigger in servers ──
+        is_dm = isinstance(message.channel, discord.DMChannel)
+        content = message.content.strip().lower()
+
+        # In server: only respond if someone types `!commands`
+        if not is_dm:
+            if content in ("!commands", "!command"):
+                await self.bot.get_command("help").invoke(
+                    await self.bot.get_context(message)
+                )
             return
-        cfg = get_guild_config(payload.guild_id)
-        rr = cfg.get("reaction_roles", {})
-        msg_key = str(payload.message_id)
-        if msg_key not in rr:
+
+        # ── DM handling below ──
+        # Strip exclamation prefix if user typed a command
+        if content.startswith("!"):
+            return  # Let the normal command processor handle it
+
+        # Ignore empty messages
+        if not content:
             return
-        emoji_key = str(payload.emoji)
-        if emoji_key not in rr[msg_key]:
+
+        # 1) Check if it matches a command name directly  e.g. "skip" / "what is skip"
+        for cmd in self.bot.commands:
+            if cmd.hidden:
+                continue
+            if cmd.name in content or any(a in content for a in cmd.aliases):
+                ctx = await self.bot.get_context(message)
+                ctx.command = self.bot.get_command("help")
+                embed = discord.Embed(
+                    title=f"📖 !{cmd.qualified_name}",
+                    description=cmd.help or cmd.short_doc or "No description available.",
+                    color=0x7289DA,
+                )
+                usage = f"!{cmd.qualified_name}"
+                if cmd.signature:
+                    usage += f" {cmd.signature}"
+                embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
+                if cmd.aliases:
+                    embed.add_field(
+                        name="Aliases",
+                        value=" | ".join(f"`!{a}`" for a in cmd.aliases),
+                        inline=False,
+                    )
+                if cmd.cog:
+                    embed.add_field(name="Category", value=cmd.cog.qualified_name, inline=True)
+                await message.channel.send(embed=embed)
+                return
+
+        # 2) Check if it matches a category keyword  e.g. "music commands" / "show me music"
+        for cog_name, keywords in self.CATEGORY_KEYWORDS.items():
+            if any(kw in content for kw in keywords):
+                cog = discord.utils.find(
+                    lambda c: c.qualified_name.lower() == cog_name,
+                    self.bot.cogs.values()
+                )
+                if cog:
+                    ctx = await self.bot.get_context(message)
+                    await self.bot.help_command.send_cog_help(cog)
+                    return
+
+        # 3) General "help" / "all commands" / "what can you do"
+        if any(kw in content for kw in ("help", "all", "command", "what can", "what do")):
+            ctx = await self.bot.get_context(message)
+            await self.bot.help_command.send_bot_help(
+                {c: list(c.get_commands()) for c in self.bot.cogs.values()}
+            )
             return
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-        role = guild.get_role(int(rr[msg_key][emoji_key]))
-        if not role:
-            return
-        member = guild.get_member(payload.user_id)
-        if member and not member.bot:
-            try:
-                await member.remove_roles(role, reason="Reaction role removed")
-            except discord.Forbidden:
-                pass
+
+        # 4) Fallback greeting / unknown message
+        await message.channel.send(
+            "👋 Hey! Type `!help` to see all my commands, or ask me something like:\n"
+            "• `music commands`\n"
+            "• `what is skip`\n"
+            "• `economy commands`"
+        )
 
 
 async def setup(bot: commands.Bot):

@@ -18,7 +18,6 @@ import time
 from datetime import timedelta
 from collections import defaultdict
 from config.settings import (
-    XP_PER_MESSAGE, XP_COOLDOWN,
     COLOR_PRIMARY, COLOR_SUCCESS, COLOR_ERROR, COLOR_WARNING
 )
 from handlers.json_handler import get_guild_config
@@ -27,22 +26,13 @@ import logging
 log = logging.getLogger("bot")
 DB_PATH = "data/economy.db"
 
-LEVEL_XP_REQUIRED = lambda level: 5 * (level ** 2) + 50 * level + 100
+
 
 URL_PATTERN = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 
 
 async def _init_extras_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS levels (
-                user_id INTEGER,
-                guild_id INTEGER,
-                xp INTEGER DEFAULT 0,
-                level INTEGER DEFAULT 0,
-                PRIMARY KEY (user_id, guild_id)
-            )
-        """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS reminders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,107 +132,8 @@ class Extras(commands.Cog):
                     pass
                 return
 
-        # XP / Leveling
-        await self._handle_xp(message, cfg)
 
-    async def _handle_xp(self, message: discord.Message, cfg: dict):
-        now = time.time()
-        last = self.xp_cooldowns.get(message.author.id, 0)
-        if now - last < XP_COOLDOWN:
-            return
-        self.xp_cooldowns[message.author.id] = now
 
-        xp_gain = random.randint(*XP_PER_MESSAGE)
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "INSERT OR IGNORE INTO levels (user_id, guild_id) VALUES (?, ?)",
-                (message.author.id, message.guild.id)
-            )
-            await db.execute(
-                "UPDATE levels SET xp = xp + ? WHERE user_id=? AND guild_id=?",
-                (xp_gain, message.author.id, message.guild.id)
-            )
-            async with db.execute(
-                "SELECT xp, level FROM levels WHERE user_id=? AND guild_id=?",
-                (message.author.id, message.guild.id)
-            ) as cursor:
-                row = await cursor.fetchone()
-
-            if row:
-                xp, level = row
-                required = LEVEL_XP_REQUIRED(level)
-                if xp >= required:
-                    new_level = level + 1
-                    await db.execute(
-                        "UPDATE levels SET level=?, xp=0 WHERE user_id=? AND guild_id=?",
-                        (new_level, message.author.id, message.guild.id)
-                    )
-                    await db.commit()
-
-                    # Level up announcement
-                    ch_id = cfg.get("level_up_channel") or str(message.channel.id)
-                    channel = message.guild.get_channel(int(ch_id))
-                    if channel:
-                        embed = discord.Embed(
-                            title="⬆️ Level Up!",
-                            description=f"🎉 {message.author.mention} reached **Level {new_level}**!",
-                            color=COLOR_SUCCESS,
-                        )
-                        embed.set_thumbnail(url=message.author.display_avatar.url)
-                        await channel.send(embed=embed)
-                else:
-                    await db.commit()
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # LEVEL COMMANDS
-    # ─────────────────────────────────────────────────────────────────────────
-
-    @commands.command(name="level", aliases=["rank", "xp"])
-    async def level(self, ctx: commands.Context, member: discord.Member = None):
-        """Check your level and XP."""
-        target = member or ctx.author
-        async with aiosqlite.connect(DB_PATH) as db:
-            await db.execute(
-                "INSERT OR IGNORE INTO levels (user_id, guild_id) VALUES (?, ?)",
-                (target.id, ctx.guild.id)
-            )
-            async with db.execute(
-                "SELECT xp, level FROM levels WHERE user_id=? AND guild_id=?",
-                (target.id, ctx.guild.id)
-            ) as cursor:
-                row = await cursor.fetchone()
-            await db.commit()
-
-        xp, level = row if row else (0, 0)
-        required = LEVEL_XP_REQUIRED(level)
-        progress = int((xp / required) * 20) if required > 0 else 0
-        bar = "█" * progress + "░" * (20 - progress)
-
-        embed = discord.Embed(title=f"⭐ {target.display_name}'s Level", color=COLOR_PRIMARY)
-        embed.add_field(name="Level", value=f"**{level}**", inline=True)
-        embed.add_field(name="XP", value=f"**{xp}** / {required}", inline=True)
-        embed.add_field(name="Progress", value=f"`{bar}`", inline=False)
-        embed.set_thumbnail(url=target.display_avatar.url)
-        await ctx.send(embed=embed)
-
-    @commands.command(name="levelboard", aliases=["lvllb"])
-    async def levelboard(self, ctx: commands.Context):
-        """Show the XP leaderboard."""
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute(
-                "SELECT user_id, level, xp FROM levels WHERE guild_id=? ORDER BY level DESC, xp DESC LIMIT 10",
-                (ctx.guild.id,)
-            ) as cursor:
-                rows = await cursor.fetchall()
-        medals = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
-        lines = []
-        for i, (uid, lvl, xp) in enumerate(rows):
-            member = ctx.guild.get_member(uid)
-            name = member.display_name if member else f"<{uid}>"
-            lines.append(f"{medals[i]} **{name}** — Level {lvl} ({xp} XP)")
-        embed = discord.Embed(title="🏆 XP Leaderboard", color=COLOR_PRIMARY)
-        embed.description = "\n".join(lines) or "*No data yet.*"
-        await ctx.send(embed=embed)
 
     # ─────────────────────────────────────────────────────────────────────────
     # GIVEAWAYS

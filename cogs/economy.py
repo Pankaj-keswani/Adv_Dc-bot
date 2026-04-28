@@ -46,8 +46,6 @@ async def init_db():
                 guild_id INTEGER,
                 balance INTEGER DEFAULT 0,
                 bank INTEGER DEFAULT 0,
-                xp INTEGER DEFAULT 0,
-                level INTEGER DEFAULT 1,
                 last_daily TEXT DEFAULT NULL,
                 last_work TEXT DEFAULT NULL,
                 last_rob TEXT DEFAULT NULL,
@@ -70,9 +68,9 @@ async def get_user(db: aiosqlite.Connection, user_id: int, guild_id: int) -> dic
         )
         await db.commit()
         return {"user_id": user_id, "guild_id": guild_id, "balance": 0, "bank": 0,
-                "xp": 0, "level": 1, "last_daily": None, "last_work": None,
+                "last_daily": None, "last_work": None,
                 "last_rob": None, "inventory": "[]"}
-    cols = ["user_id", "guild_id", "balance", "bank", "xp", "level",
+    cols = ["user_id", "guild_id", "balance", "bank",
             "last_daily", "last_work", "last_rob", "inventory"]
     return dict(zip(cols, row))
 

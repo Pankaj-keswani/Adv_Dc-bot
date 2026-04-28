@@ -26,7 +26,6 @@ DEFAULT_GUILD_CONFIG = {
     "anti_spam": True,
     "link_filter": False,
     "reaction_roles": {},     # {message_id: {emoji: role_id}}
-    "level_up_channel": None,
     "giveaways": {},
     "blacklisted_users": [],
     "disabled_commands": [],

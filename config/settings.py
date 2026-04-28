@@ -30,9 +30,6 @@ GAMBLE_MIN_BET  = 10
 MAX_QUEUE_SIZE  = 200
 DEFAULT_VOLUME  = 50
 
-# ── Leveling ──────────────────────────────────────────────────────────────────
-XP_PER_MESSAGE  = (15, 40)     # random range per message
-XP_COOLDOWN     = 60           # seconds between XP awards per user
 
 # ── Moderation ────────────────────────────────────────────────────────────────
 MUTE_ROLE_NAME  = "Muted"

@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     git \
     curl \
+    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -24,8 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY . .
 
-# Create data directories
-RUN mkdir -p data/guilds
+# Create data directories and set permissions for Hugging Face (UID 1000)
+RUN mkdir -p data/guilds && chmod -R 777 data
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 CMD ["python", "main.py"]

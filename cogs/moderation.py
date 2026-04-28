@@ -8,11 +8,24 @@ from discord import app_commands
 import aiosqlite
 import asyncio
 from datetime import timedelta
-from config.settings import COLOR_SUCCESS, COLOR_ERROR, COLOR_WARNING, MUTE_ROLE_NAME
+from config.settings import COLOR_SUCCESS, COLOR_ERROR, COLOR_WARNING, MUTE_ROLE_NAME, OWNER_IDS
 import logging
 
 log = logging.getLogger("bot")
 DB_PATH = "data/economy.db"
+
+# ── Protected Users ───────────────────────────────────────────────────────────
+# No moderation command can ever target these user IDs.
+# OWNER_IDS are always included automatically.
+# Add extra user IDs to EXTRA_PROTECTED if needed.
+EXTRA_PROTECTED: list[int] = []   # e.g. [123456789, 987654321]
+PROTECTED_IDS: set[int] = set(OWNER_IDS) | set(EXTRA_PROTECTED)
+
+
+def is_protected(member: discord.Member) -> bool:
+    """Returns True if this member is on the protected list."""
+    return member.id in PROTECTED_IDS
+
 
 
 async def _init_mod_db():
@@ -76,6 +89,8 @@ class Moderation(commands.Cog):
     @commands.has_permissions(ban_members=True)
     async def ban(self, ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided"):
         """Ban a member from the server."""
+        if is_protected(member):
+            return await ctx.send("🛡️ That user is protected and cannot be moderated.")
         if member.top_role >= ctx.author.top_role:
             return await ctx.send("❌ You can't ban someone with equal or higher role!")
         await member.ban(reason=f"{ctx.author} — {reason}")
@@ -106,6 +121,8 @@ class Moderation(commands.Cog):
     @commands.has_permissions(kick_members=True)
     async def kick(self, ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided"):
         """Kick a member from the server."""
+        if is_protected(member):
+            return await ctx.send("🛡️ That user is protected and cannot be moderated.")
         if member.top_role >= ctx.author.top_role:
             return await ctx.send("❌ You can't kick someone with equal or higher role!")
         await member.kick(reason=f"{ctx.author} — {reason}")
@@ -123,6 +140,8 @@ class Moderation(commands.Cog):
     async def mute(self, ctx: commands.Context, member: discord.Member,
                    duration: int = None, *, reason: str = "No reason provided"):
         """Mute a member. Optionally specify duration in minutes."""
+        if is_protected(member):
+            return await ctx.send("🛡️ That user is protected and cannot be moderated.")
         role = await self._get_or_create_mute_role(ctx.guild)
         if role in member.roles:
             return await ctx.send(f"❌ {member.mention} is already muted.")
@@ -158,6 +177,8 @@ class Moderation(commands.Cog):
     async def timeout(self, ctx: commands.Context, member: discord.Member,
                       minutes: int = 5, *, reason: str = "No reason provided"):
         """Timeout a member for N minutes (uses Discord's native timeout)."""
+        if is_protected(member):
+            return await ctx.send("🛡️ That user is protected and cannot be moderated.")
         until = discord.utils.utcnow() + timedelta(minutes=minutes)
         await member.timeout(until, reason=reason)
         embed = discord.Embed(title="⏱️ Member Timed Out", color=COLOR_WARNING)
@@ -173,6 +194,8 @@ class Moderation(commands.Cog):
     @commands.has_permissions(manage_messages=True)
     async def warn(self, ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided"):
         """Warn a member and log it."""
+        if is_protected(member):
+            return await ctx.send("🛡️ That user is protected and cannot be moderated.")
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
                 "INSERT INTO warnings (user_id, guild_id, moderator_id, reason) VALUES (?,?,?,?)",
@@ -305,6 +328,8 @@ class Moderation(commands.Cog):
     @commands.has_permissions(manage_nicknames=True)
     async def nick(self, ctx: commands.Context, member: discord.Member, *, nickname: str = None):
         """Change a member's nickname."""
+        if is_protected(member):
+            return await ctx.send("🛡️ That user is protected and cannot be moderated.")
         old = member.display_name
         await member.edit(nick=nickname)
         await ctx.send(f"✅ Changed **{old}** → **{nickname or member.name}**", delete_after=8)
@@ -315,6 +340,8 @@ class Moderation(commands.Cog):
     @commands.has_permissions(manage_roles=True)
     async def role(self, ctx: commands.Context, member: discord.Member, *, role: discord.Role):
         """Add or remove a role from a member (toggles)."""
+        if is_protected(member):
+            return await ctx.send("🛡️ That user is protected and cannot be moderated.")
         if role in member.roles:
             await member.remove_roles(role)
             await ctx.send(f"➖ Removed **{role.name}** from {member.mention}", delete_after=5)

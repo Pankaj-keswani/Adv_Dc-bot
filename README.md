@@ -1,3 +1,12 @@
+---
+title: Advance DC BOT
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
 # 🤖 Advanced Discord Bot
 
 A **production-grade** Discord bot built in Python with AI chatbot, music, economy, moderation, games, and more — ready for **Microsoft Azure** deployment.

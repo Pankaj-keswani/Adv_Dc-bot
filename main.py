@@ -91,6 +91,8 @@ class AdvancedBot(commands.Bot):
             "cogs.moderation",
             "cogs.owner",
             "cogs.extras",
+            "cogs.permissions",
+            "cogs.activity",
             "handlers.event_handler",
             "handlers.error_handler",
         ]
@@ -133,61 +135,105 @@ class AdvancedBot(commands.Bot):
 
 # ── Custom Help Command ───────────────────────────────────────────────────────
 
+# Colour per category for visual distinction
+COG_COLOURS = {
+    "Music":       0x1DB954,  # Spotify green
+    "Economy":     0xF1C40F,  # Gold
+    "Fun":         0xFF6B6B,  # Coral
+    "Games":       0x9B59B6,  # Purple
+    "Info":        0x3498DB,  # Blue
+    "Moderation":  0xE74C3C,  # Red
+    "Extras":      0x95A5A6,  # Grey
+    "Permissions": 0xE67E22,  # Orange
+}
+
 class CustomHelpCommand(commands.HelpCommand):
+
+    def _cog_colour(self, cog_name: str) -> int:
+        return COG_COLOURS.get(cog_name, 0x7289DA)
+
     async def send_bot_help(self, mapping):
+        """Overview — all categories."""
         embed = discord.Embed(
-            title="📖 Advanced Bot Help",
+            title="🤖 Th3on.ai — Command Centre",
             description=(
-                "Use `!help <command>` for details on a specific command.\n"
-                "Slash commands are also available — type `/` to browse them.\n\n"
-                "**Prefix:** `!` (customizable with `!setprefix`)"
+                "Use `!help <category>` for a full list of commands in that category.\n"
+                "Use `!help <command>` for details about a specific command.\n\n"
+                "**Prefix:** `!`  |  Slash commands: type `/` in chat"
             ),
             color=0x7289DA,
         )
+
         for cog, cmds in mapping.items():
             visible = [c for c in cmds if not c.hidden]
             if not visible:
                 continue
             cog_name = getattr(cog, "qualified_name", "Misc")
-            cmd_list = " ".join(f"`{c.name}`" for c in visible)
-            embed.add_field(name=cog_name, value=cmd_list or "*No commands*", inline=False)
+            # Show first 6 commands with a note if there are more
+            names = [f"`{c.name}`" for c in visible[:6]]
+            extra = f" *+{len(visible)-6} more*" if len(visible) > 6 else ""
+            embed.add_field(
+                name=f"{cog_name} ({len(visible)})",
+                value=" ".join(names) + extra,
+                inline=False
+            )
 
-        embed.set_footer(text="[ ] = optional  < > = required | !help <command> for details")
-        channel = self.get_destination()
-        await channel.send(embed=embed)
-
-    async def send_command_help(self, command: commands.Command):
-        embed = discord.Embed(
-            title=f"📖 !{command.qualified_name}",
-            description=command.help or "No description.",
-            color=0x7289DA,
-        )
-        if command.aliases:
-            embed.add_field(name="Aliases", value=" | ".join(f"`{a}`" for a in command.aliases), inline=False)
-        embed.add_field(
-            name="Usage",
-            value=f"`!{command.qualified_name} {command.signature}`" if command.signature else f"`!{command.qualified_name}`",
-            inline=False,
-        )
-        channel = self.get_destination()
-        await channel.send(embed=embed)
+        embed.set_footer(text="Tip: !help Music  →  shows all music commands")
+        await self.get_destination().send(embed=embed)
 
     async def send_cog_help(self, cog: commands.Cog):
+        """Full list for one category."""
         visible = [c for c in cog.get_commands() if not c.hidden]
+        cog_name = cog.qualified_name
         embed = discord.Embed(
-            title=f"📖 {cog.qualified_name} Commands",
-            description=cog.description or "",
-            color=0x7289DA,
+            title=f"📂 {cog_name} Commands",
+            description=cog.description or f"All `{cog_name}` commands are listed below.",
+            color=self._cog_colour(cog_name),
         )
         for cmd in visible:
-            embed.add_field(name=f"!{cmd.qualified_name}", value=cmd.short_doc or "No description", inline=False)
-        channel = self.get_destination()
-        await channel.send(embed=embed)
+            usage = f"!{cmd.qualified_name}"
+            if cmd.signature:
+                usage += f" {cmd.signature}"
+            aliases = (
+                f" (aliases: {', '.join(f'`{a}`' for a in cmd.aliases)})"
+                if cmd.aliases else ""
+            )
+            embed.add_field(
+                name=f"`{usage}`{aliases}",
+                value=cmd.short_doc or "No description.",
+                inline=False
+            )
+        embed.set_footer(text="!help <command>  →  more details")
+        await self.get_destination().send(embed=embed)
+
+    async def send_command_help(self, command: commands.Command):
+        """Detailed help for one command."""
+        cog_name = command.cog.qualified_name if command.cog else "Misc"
+        embed = discord.Embed(
+            title=f"📖 !{command.qualified_name}",
+            description=command.help or command.short_doc or "No description available.",
+            color=self._cog_colour(cog_name),
+        )
+        usage = f"!{command.qualified_name}"
+        if command.signature:
+            usage += f" {command.signature}"
+        embed.add_field(name="Usage", value=f"`{usage}`", inline=False)
+        if command.aliases:
+            embed.add_field(
+                name="Aliases",
+                value=" | ".join(f"`!{a}`" for a in command.aliases),
+                inline=False
+            )
+        embed.add_field(name="Category", value=cog_name, inline=True)
+        await self.get_destination().send(embed=embed)
 
     async def send_error_message(self, error: str):
-        embed = discord.Embed(title="❌ Help Error", description=error, color=0xE74C3C)
-        channel = self.get_destination()
-        await channel.send(embed=embed)
+        embed = discord.Embed(
+            title="❌ Command Not Found",
+            description=f"{error}\n\nUse `!help` to see all commands.",
+            color=0xE74C3C
+        )
+        await self.get_destination().send(embed=embed)
 
 
 from aiohttp import web
