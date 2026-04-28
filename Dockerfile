@@ -30,4 +30,4 @@ COPY . .
 RUN mkdir -p data/guilds && chmod -R 777 data
 
 # ── Run ───────────────────────────────────────────────────────────────────────
-CMD ["python", "main.py"]
+CMD ["python3", "-u", "main.py"]

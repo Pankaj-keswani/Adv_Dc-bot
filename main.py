@@ -266,15 +266,22 @@ async def main():
     # ── Connection Loop ─────────────────────────────────────────────────────
     max_retries = 10
     
+    # Vitality Check: Can we reach the internet?
+    try:
+        import socket
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        log.info("🌍 Internet Vitality Check: PASSED (Google DNS is reachable)")
+    except Exception as e:
+        log.warning(f"⚠️ Internet Vitality Check: FAILED ({e})")
+
     for attempt in range(1, max_retries + 1):
         try:
             log.info(f"🚀 [Attempt {attempt}] Connecting to Discord Gateway...")
             
-            async with bot:
-                # Let discord.py handle the connector naturally
-                # but keep the health server running in the background
-                await bot.start(DISCORD_TOKEN)
-                break 
+            # Revert to standard discord.py connection for maximum compatibility
+            # Let the library manage the session and SSL naturally
+            await bot.start(DISCORD_TOKEN, reconnect=True)
+            break 
         except Exception as e:
             log.error(f"❌ Gateway Error: {e}")
             wait = min(attempt * 5, 60)
@@ -287,4 +294,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print(f"FATAL CRASH: {e}")
+        log.critical(f"FATAL CRASH: {e}")
