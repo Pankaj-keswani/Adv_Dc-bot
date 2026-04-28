@@ -266,26 +266,36 @@ async def main():
     # ── Connection Loop ─────────────────────────────────────────────────────
     max_retries = 10
     
-    # Vitality Check: Can we reach the internet?
-    try:
-        import socket
-        socket.create_connection(("8.8.8.8", 53), timeout=3)
-        log.info("🌍 Internet Vitality Check: PASSED (Google DNS is reachable)")
-    except Exception as e:
-        log.warning(f"⚠️ Internet Vitality Check: FAILED ({e})")
-
+    # Use a single session to avoid "Unclosed session" errors
+    import aiohttp
+    import socket
+    
     for attempt in range(1, max_retries + 1):
+        session = None
         try:
-            log.info(f"🚀 [Attempt {attempt}] Connecting to Discord Gateway...")
+            log.info(f"🚀 [Attempt {attempt}] Connecting to Discord...")
             
-            # Revert to standard discord.py connection for maximum compatibility
-            # Let the library manage the session and SSL naturally
-            await bot.start(DISCORD_TOKEN, reconnect=True)
-            break 
+            # Create a hardened connector for each attempt
+            connector = aiohttp.TCPConnector(
+                family=socket.AF_INET, # Force IPv4
+                use_dns_cache=False,    # Don't trust cloud DNS cache
+                ttl_dns_cache=0
+            )
+            
+            # Initialize bot with custom session
+            async with aiohttp.ClientSession(connector=connector) as session:
+                bot.http.connector = connector
+                await bot.login(DISCORD_TOKEN)
+                await bot.connect(reconnect=True)
+                break 
+                
         except Exception as e:
-            log.error(f"❌ Gateway Error: {e}")
+            log.error(f"❌ Connection Failure: {e}")
+            if session:
+                await session.close()
+            
             wait = min(attempt * 5, 60)
-            log.info(f"⏳ Waiting {wait}s before reconnecting...")
+            log.info(f"⏳ Waiting {wait}s before trying a new path...")
             await asyncio.sleep(wait)
 
 if __name__ == "__main__":
