@@ -255,15 +255,38 @@ async def start_webserver():
 
 async def main():
     if not DISCORD_TOKEN:
-        log.critical("❌ DISCORD_TOKEN not found in .env file!")
+        log.critical("❌ DISCORD_TOKEN not found! Make sure it is set in Hugging Face Secrets.")
         sys.exit(1)
 
     # Start health check server for Hugging Face compatibility
     await start_webserver()
 
     bot = AdvancedBot()
-    async with bot:
-        await bot.start(DISCORD_TOKEN)
+    
+    # ── Connection Retry Logic ───────────────────────────────────────────────
+    max_retries = 5
+    retry_delay = 5
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            log.info(f"🚀 Starting bot (Attempt {attempt}/{max_retries})...")
+            async with bot:
+                # Force IPv4 to avoid common Hugging Face connection errors
+                import aiohttp
+                connector = aiohttp.TCPConnector(family=aiohttp.socket.AF_INET)
+                bot.http.connector = connector
+                
+                await bot.start(DISCORD_TOKEN)
+                break # Success!
+        except Exception as e:
+            log.error(f"❌ Connection failed: {e}")
+            if attempt < max_retries:
+                log.info(f"⏳ Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2 # Exponential backoff
+            else:
+                log.critical("💀 All connection attempts failed. Shutting down.")
+                sys.exit(1)
 
 
 if __name__ == "__main__":
