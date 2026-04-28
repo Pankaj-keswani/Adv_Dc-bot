@@ -273,7 +273,8 @@ async def main():
             async with bot:
                 # Force IPv4 to avoid common Hugging Face connection errors
                 import aiohttp
-                connector = aiohttp.TCPConnector(family=aiohttp.socket.AF_INET)
+                import socket
+                connector = aiohttp.TCPConnector(family=socket.AF_INET)
                 bot.http.connector = connector
                 
                 await bot.start(DISCORD_TOKEN)
