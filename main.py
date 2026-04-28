@@ -269,37 +269,46 @@ async def main():
     
     for attempt in range(1, max_retries + 1):
         try:
-            # 1. DNS Check
+            # 1. Token Check
+            if not DISCORD_TOKEN or len(DISCORD_TOKEN) < 10:
+                log.critical("❌ DISCORD_TOKEN is empty or too short! Check HF Secrets.")
+                return
+            log.info(f"🔑 Token detected (Starts with: {DISCORD_TOKEN[:4]}...)")
+
+            # 2. DNS Check
             import socket
             try:
                 ip = socket.gethostbyname("discord.com")
-                log.info(f"🌐 DNS Check: discord.com resolved to {ip}")
+                log.info(f"🌐 DNS Check: discord.com -> {ip}")
             except Exception as de:
-                log.warning(f"⚠️ DNS Warning: Could not resolve discord.com: {de}")
+                log.warning(f"⚠️ DNS Warning: {de}")
 
             log.info(f"🚀 Starting bot (Attempt {attempt}/{max_retries})...")
             
             async with bot:
-                # 2. Optimized Connector
+                # 3. Secure but cloud-friendly connector
                 import aiohttp
+                import ssl
+                import certifi
+                
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
                 connector = aiohttp.TCPConnector(
                     family=socket.AF_INET,
-                    ssl=False, # Some cloud envs have proxy issues with default SSL
+                    ssl=ssl_context,
                     use_dns_cache=False
                 )
                 bot.http.connector = connector
                 
-                # Use a longer timeout for the initial handshake
                 await bot.start(DISCORD_TOKEN)
                 break 
         except Exception as e:
-            log.error(f"❌ Connection failed: {e}")
+            log.error(f"❌ Connection error: {e}")
             if attempt < max_retries:
-                log.info(f"⏳ Retrying in {retry_delay} seconds...")
+                log.info(f"⏳ Waiting {retry_delay}s before retry...")
                 await asyncio.sleep(retry_delay)
                 retry_delay *= 2
             else:
-                log.critical("💀 All connection attempts failed. Shutting down.")
+                log.critical("💀 All attempts failed.")
                 sys.exit(1)
 
 

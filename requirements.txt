@@ -16,3 +16,4 @@ psutil==5.9.8
 colorlog==6.8.2
 aiodns==3.2.0
 dnspython==2.6.1
+certifi
