@@ -266,36 +266,36 @@ async def main():
     # ── Connection Loop ─────────────────────────────────────────────────────
     max_retries = 10
     
-    # Use a single session to avoid "Unclosed session" errors
     import aiohttp
     import socket
+    import os
     
     for attempt in range(1, max_retries + 1):
         session = None
         try:
-            log.info(f"🚀 [Attempt {attempt}] Connecting to Discord...")
+            # Detect cloud proxy
+            proxy = os.environ.get('http_proxy') or os.environ.get('https_proxy')
+            if proxy:
+                log.info(f"🛰️ Cloud Proxy Detected: {proxy}")
+
+            log.info(f"🚀 [Attempt {attempt}] Connecting via Proxy-Aware Session...")
             
-            # Create a hardened connector for each attempt
-            connector = aiohttp.TCPConnector(
-                family=socket.AF_INET, # Force IPv4
-                use_dns_cache=False,    # Don't trust cloud DNS cache
-                ttl_dns_cache=0
-            )
+            connector = aiohttp.TCPConnector(family=socket.AF_INET)
             
-            # Initialize bot with custom session
-            async with aiohttp.ClientSession(connector=connector) as session:
+            # trust_env=True is CRITICAL for Hugging Face/Cloud networking
+            async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
                 bot.http.connector = connector
                 await bot.login(DISCORD_TOKEN)
                 await bot.connect(reconnect=True)
                 break 
                 
         except Exception as e:
-            log.error(f"❌ Connection Failure: {e}")
+            log.error(f"❌ Proxy Connection Failure: {e}")
             if session:
                 await session.close()
             
             wait = min(attempt * 5, 60)
-            log.info(f"⏳ Waiting {wait}s before trying a new path...")
+            log.info(f"⏳ Waiting {wait}s before trying a different route...")
             await asyncio.sleep(wait)
 
 if __name__ == "__main__":
